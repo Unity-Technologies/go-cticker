@@ -53,7 +53,7 @@ type Ticker struct {
 // time at d wall clock boundaries plus or minus accuracy.
 // It will drop ticks to make up for slow receivers.
 // The duration d must be greater than zero; if not, NewTicker will panic.
-// The accuracy must be greater than d; it not, NewTicker will panic.
+// The accuracy must be less than d; it not, NewTicker will panic.
 // Stop the ticker to release its associated resources.
 func New(d, accuracy time.Duration) *Ticker {
 	if d <= accuracy {
