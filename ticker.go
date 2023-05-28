@@ -92,7 +92,6 @@ func New(d, accuracy time.Duration) *Ticker {
 			t.ticker = newTicker(accuracy)
 			go t.tick(c)
 		}
-
 	}()
 
 	return t

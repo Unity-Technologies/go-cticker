@@ -1,0 +1,55 @@
+name: Go build, test and lint
+
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - master
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  go:
+    strategy:
+      matrix:
+        go: [1.20]
+        golangci-lint: [1.52.2]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: lint
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+
+      - name: Validate go generate / mod
+        if: runner.os != 'Windows'
+        run: |
+          go mod tidy
+          git --no-pager diff && [[ 0 -eq $(git status --porcelain | wc -l) ]]
+
+      - name: Go Lint Standard
+        if: runner.os != 'Windows'
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: ${{ matrix.golangci-lint }}
+          args: "--out-${NO_FUTURE}format colored-line-number"
+
+      - name: Go Lint Windows
+        if: runner.os == 'Windows'
+        uses: golangci/golangci-lint-action@v3
+        env:
+          outformat: out-format
+        with:
+          version: ${{ matrix.golangci-lint }}
+          args: "--%outformat% colored-line-number"
+
+      - name: Go Test
+        run: go test -race ./...
