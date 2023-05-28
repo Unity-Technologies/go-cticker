@@ -45,15 +45,23 @@ type Ticker struct {
 	C      <-chan time.Time // The channel on which ticks are delivered.
 	d      time.Duration
 	a      time.Duration
+	last   time.Time
+	next   time.Time
 	done   chan struct{}
 	ticker ticker
 }
 
 // New returns a new Ticker containing a channel that will send the
-// time at d wall clock boundaries plus or minus accuracy.
+// time at d wall clock boundaries plus accuracy.
+//
 // It will drop ticks to make up for slow receivers.
 // The duration d must be greater than zero; if not, NewTicker will panic.
 // The accuracy must be less than d; it not, NewTicker will panic.
+//
+// If the accuracy is too small, the ticker may not be able to tick at
+// the requested time. Instead it will tick at the next available time
+// after the target time, which should be within accuracy.
+//
 // Stop the ticker to release its associated resources.
 func New(d, accuracy time.Duration) *Ticker {
 	if d <= accuracy {
@@ -63,23 +71,25 @@ func New(d, accuracy time.Duration) *Ticker {
 	// while reading the values, we drop the ticks until it catches
 	// back up.
 	c := make(chan time.Time, 1)
+	now := time.Now()
 	t := &Ticker{
 		C:    c,
 		d:    d,
 		a:    accuracy,
+		last: now.Truncate(d),
+		next: now.Truncate(d).Add(d),
 		done: make(chan struct{}),
 	}
 
 	go func() {
 		// Synchronise to the accuracy.
-		now := time.Now()
 		time.Sleep(now.Truncate(accuracy).Add(accuracy).Sub(now))
 
 		t.mtx.Lock()
 		defer t.mtx.Unlock()
 		select {
 		case <-t.done:
-			// Already stopped
+			// Already stopped.
 		default:
 			t.ticker = newTicker(accuracy)
 			go t.tick(c)
@@ -106,18 +116,24 @@ func (t *Ticker) Stop() {
 // tick sends ticks to t.C with the tickers defined accuracy.
 func (t *Ticker) tick(c chan time.Time) {
 	ticks := t.ticker.Ch()
-	var last time.Time
 	for {
 		select {
 		case now := <-ticks:
 			// Remove monotonic clock as we want wall clock comparisons.
 			now = now.Truncate(t.a)
-			tick := now.Truncate(t.d)
+			if now.Before(t.last) {
+				// Clock has been adjusted to an earlier time.
+				// Adjust the next tick to be on the next wall clock
+				// boundary.
+				t.last = now.Truncate(t.d)
+				t.next = t.last.Add(t.d)
+			}
 
-			// Tick if we match the expected value or we're out by accuracy and
-			// we haven't ticked for that time.
-			if now.Equal(tick) || (!last.Equal(tick) && now.Add(-t.a).Equal(tick)) {
-				last = tick
+			// Tick if are within accuracy of the target time or it has past.
+			// This ensures that we tick even if the requested accuracy is
+			// not achievable, for example time.NanoSecond.
+			if now.Compare(t.next) >= 0 {
+				t.next = t.next.Add(t.d)
 				select {
 				case c <- now:
 				default:
