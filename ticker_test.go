@@ -161,3 +161,28 @@ func testTicker(t *testing.T, now time.Time, d, a time.Duration, times, ticks []
 
 	return tick
 }
+
+func Test_issue4(t *testing.T) {
+	duration := time.Second
+	ticker := New(duration, time.Millisecond)
+	timeout := time.After(time.Second * 2)
+	select {
+	case <-ticker.C:
+	case <-timeout:
+		t.Fatal("timeout")
+	}
+}
+
+func TestTicker_StopClose(t *testing.T) {
+	ticker := New(time.Millisecond, time.Nanosecond)
+	go func() {
+		time.Sleep(time.Millisecond * 10)
+		ticker.StopClose()
+	}()
+
+	ticks := 0
+	for range ticker.C {
+		ticks++
+	}
+	assert.GreaterOrEqual(t, 9, ticks)
+}
