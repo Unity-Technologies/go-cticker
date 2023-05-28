@@ -7,12 +7,14 @@ import (
 	"github.com/multiplay/go-cticker"
 )
 
-// TODO(steve): remove this nolint when go tool vet is fixed.
-// nolint: vet
 func ExampleTicker() {
+	// Create a ticker that ticks on the minute with 1 second accuracy.
 	t := cticker.New(time.Minute, time.Second)
-	for tick := range t.C {
-		// Process tick
-		fmt.Println("tick:", tick)
-	}
+	defer t.Stop()
+
+	<-t.C
+
+	// Process tick
+	fmt.Println("tick")
+	// Output: tick
 }

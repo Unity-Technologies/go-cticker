@@ -61,7 +61,7 @@ func TestTickerDrift(t *testing.T) {
 	ticks := make([]time.Time, 0, 4)
 	ticks = addTicks(ticks, now, now.Add(time.Minute*3), d, a)
 
-	last := testTicker(t, now, d, a, times, ticks)
+	last := testTicker(t, d, a, times, ticks)
 	now = time.Now()
 	assert.True(t, now.Before(last), fmt.Sprintln(now, "is not before", last))
 }
@@ -79,7 +79,7 @@ func TestTickerAdjustment(t *testing.T) {
 	ticks = append(ticks, now.Truncate(d).Add(d))
 	ticks = addTicks(ticks, summer.Add(d*2), summer.Add(d*4), d, a)
 
-	last := testTicker(t, now, d, a, times, ticks)
+	last := testTicker(t, d, a, times, ticks)
 	now = time.Now()
 	assert.True(t, now.After(last), fmt.Sprintln(now, "is not after", last))
 }
@@ -104,7 +104,7 @@ func TestTickerLostTick(t *testing.T) {
 		}
 	}
 
-	last := testTicker(t, now, d, a, times, ticks)
+	last := testTicker(t, d, a, times, ticks)
 	now = time.Now()
 	assert.True(t, now.Before(last), fmt.Sprintln(now, "is not before", last))
 }
@@ -133,7 +133,9 @@ func addTicks(ticks []time.Time, start, end time.Time, d, a time.Duration) []tim
 	return ticks
 }
 
-func testTicker(t *testing.T, now time.Time, d, a time.Duration, times, ticks []time.Time) time.Time {
+func testTicker(t *testing.T, d, a time.Duration, times, ticks []time.Time) time.Time {
+	t.Helper()
+
 	newTicker = func(d time.Duration) ticker {
 		t := &mockTicker{
 			c:      make(chan time.Time, 4),
@@ -160,4 +162,15 @@ func testTicker(t *testing.T, now time.Time, d, a time.Duration, times, ticks []
 	}
 
 	return tick
+}
+
+func Test_issue4(t *testing.T) {
+	duration := time.Second
+	ticker := New(duration, time.Millisecond)
+	timeout := time.After(time.Second * 2)
+	select {
+	case <-ticker.C:
+	case <-timeout:
+		t.Fatal("timeout")
+	}
 }
