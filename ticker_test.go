@@ -172,3 +172,17 @@ func Test_issue4(t *testing.T) {
 		t.Fatal("timeout")
 	}
 }
+
+func TestTicker_StopClose(t *testing.T) {
+	ticker := New(time.Millisecond, time.Nanosecond)
+	go func() {
+		time.Sleep(time.Millisecond * 10)
+		ticker.StopClose()
+	}()
+
+	ticks := 0
+	for range ticker.C {
+		ticks++
+	}
+	assert.GreaterOrEqual(t, 9, ticks)
+}

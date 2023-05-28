@@ -43,12 +43,14 @@ var newTicker = newRuntimeTicker
 type Ticker struct {
 	mtx    sync.Mutex
 	C      <-chan time.Time // The channel on which ticks are delivered.
+	c      chan time.Time
 	d      time.Duration
 	a      time.Duration
 	last   time.Time
 	next   time.Time
 	done   chan struct{}
 	ticker ticker
+	wg     sync.WaitGroup
 }
 
 // New returns a new Ticker containing a channel that will send the
@@ -74,6 +76,7 @@ func New(d, accuracy time.Duration) *Ticker {
 	now := time.Now()
 	t := &Ticker{
 		C:    c,
+		c:    c,
 		d:    d,
 		a:    accuracy,
 		last: now.Truncate(d),
@@ -81,7 +84,10 @@ func New(d, accuracy time.Duration) *Ticker {
 		done: make(chan struct{}),
 	}
 
+	t.wg.Add(1)
 	go func() {
+		defer t.wg.Done()
+
 		// Synchronise to the accuracy.
 		time.Sleep(now.Truncate(accuracy).Add(accuracy).Sub(now))
 
@@ -91,8 +97,9 @@ func New(d, accuracy time.Duration) *Ticker {
 		case <-t.done:
 			// Already stopped.
 		default:
+			t.wg.Add(1)
 			t.ticker = newTicker(accuracy)
-			go t.tick(c)
+			go t.tick()
 		}
 
 	}()
@@ -111,10 +118,20 @@ func (t *Ticker) Stop() {
 	if t.ticker != nil {
 		t.ticker.Stop()
 	}
+	t.wg.Wait()
+}
+
+// StopClose turns off the ticker and closes the channel.
+// After StopClose, no more ticks will be sent.
+func (t *Ticker) StopClose() {
+	t.Stop()
+	close(t.c)
 }
 
 // tick sends ticks to t.C with the tickers defined accuracy.
-func (t *Ticker) tick(c chan time.Time) {
+func (t *Ticker) tick() {
+	defer t.wg.Done()
+
 	ticks := t.ticker.Ch()
 	for {
 		select {
@@ -135,7 +152,7 @@ func (t *Ticker) tick(c chan time.Time) {
 			if now.Compare(t.next) >= 0 {
 				t.next = t.next.Add(t.d)
 				select {
-				case c <- now:
+				case t.c <- now:
 				default:
 					// Consumer is running slowly
 				}
